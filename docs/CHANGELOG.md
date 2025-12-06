@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2025-12-09
+
 ### Added
 
-- `cve` command now supports remote URL probes for CVE-2025-55182 (via `--url`, `--timeout`), using the react2shell-scanner detection approach.
+- Added `cve` command to scan project lockfiles for CVE-2025-55182 using bundled rules.
+- Added remote inspection (`reactscan rsc <url>`) to safely check production endpoints for RSC signals.
+- `cve` now supports remote URL probes for CVE-2025-55182 (via `--url` and `--timeout`), using the react2shell-scanner detection approach.
 
 ## [1.2.0] - 2025-12-07
 
@@ -220,7 +224,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated version to 0.1.0 ([b2ec280](https://github.com/minagishl/reactscan/commit/b2ec280))
 
-[unreleased]: https://github.com/minagishl/reactscan/compare/v1.2.0...HEAD
+[unreleased]: https://github.com/minagishl/reactscan/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/minagishl/reactscan/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/minagishl/reactscan/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/minagishl/reactscan/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/minagishl/reactscan/compare/v0.3.0...v1.0.0
