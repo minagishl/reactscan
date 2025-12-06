@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 
 # Build the project to ensure it compiles
-npm run build || exit 1
+bun run build || exit 1
