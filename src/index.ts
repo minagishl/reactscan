@@ -8,6 +8,7 @@ import { registerRscCommand } from "./commands/rsc.js";
 import { registerReportCommand } from "./commands/report.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerCVECommand } from "./commands/cve.js";
+import { registerMcpCommand } from "./commands/mcp.js";
 import { suggestCommand } from "./utils/suggest.js";
 import { logger } from "./utils/logger.js";
 
@@ -36,6 +37,7 @@ program.on("command:*", ([cmd]) => {
     "init",
     "check",
     "cve",
+    "mcp",
     "version",
   ]);
   logger.error(`Unknown command "${cmd}".`);
@@ -52,6 +54,7 @@ registerRscCommand(program);
 registerReportCommand(program);
 registerInitCommand(program);
 registerCVECommand(program);
+registerMcpCommand(program);
 
 program
   .command("version")

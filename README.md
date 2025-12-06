@@ -11,6 +11,7 @@ Non-intrusive CLI to statically inspect React / Next.js projects.
 - Cache mechanism to improve execution speed on large projects
 - Plugin system for custom checks
 - Error classification for network, filesystem, and parse errors
+- MCP server mode to expose reactscan tools over the Model Context Protocol
 
 ## Installation
 
@@ -159,6 +160,27 @@ reactscan cve CVE-2025-55182 --url https://example.com --timeout 6000
 - `--url <remote>` - Probe a remote URL for CVE-2025-55182 indicators
 - `--timeout <ms>` - Request timeout for remote scans (default: 10000)
 - `--debug` - Enable debug logging
+
+---
+
+#### `mcp` - MCP Server
+
+Expose reactscan as a Model Context Protocol server over stdio (for clients like Claude Desktop):
+
+```bash
+reactscan mcp
+# verbose stderr logging
+reactscan mcp --debug
+```
+
+Tools available via MCP:
+
+- `scan` (React/Next.js detection)
+- `deps` (risky dependency combinations)
+- `rsc` (local or remote RSC signals)
+- `cve` (lockfile checks or remote probes for CVE-2025-55182)
+
+Paths default to the current working directory. Output is streamed as MCP tool responses; non-protocol logs are sent to stderr.
 
 ---
 
