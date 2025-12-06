@@ -42,7 +42,7 @@ export const runCVE = async (
     }
 
     if (result.scannedPackages === 0) {
-      logger.warn("No lockfile found. Run npm/pnpm/yarn install first.");
+      logger.warn("No lockfile found. Run bun install (or npm/pnpm/yarn) first.");
       return { ok: false };
     }
 

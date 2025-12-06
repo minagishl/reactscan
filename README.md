@@ -17,10 +17,6 @@ Non-intrusive CLI to statically inspect React / Next.js projects.
 
 ```bash
 npm install -g @minagishl/reactscan
-# or
-pnpm add -g @minagishl/reactscan
-# or
-yarn global add @minagishl/reactscan
 ```
 
 ## Usage
@@ -417,34 +413,34 @@ This project uses [husky](https://typicode.github.io/husky/) to manage Git hooks
 - **pre-commit**: Runs linter and formatter checks before committing
 - **pre-push**: Builds the project to ensure it compiles before pushing
 
-When you run `pnpm install`, husky will automatically set up these hooks.
+When you run `bun install`, husky will automatically set up these hooks.
 
 ### Manual Setup
 
 If hooks are not set up automatically:
 
 ```bash
-pnpm install
-pnpm run prepare
+bun install
+bun run prepare
 ```
 
 ### Running Checks Manually
 
 ```bash
 # Run linter
-pnpm run lint
+bun run lint
 
 # Fix linting issues
-pnpm run lint:fix
+bun run lint:fix
 
 # Check formatting
-pnpm run format
+bun run format
 
 # Fix formatting
-pnpm run format:write
+bun run format:write
 
 # Build the project
-pnpm run build
+bun run build
 ```
 
 ---
