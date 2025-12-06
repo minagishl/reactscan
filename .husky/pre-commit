@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Run linter
+npm run lint || exit 1
+
+# Run formatter check
+npm run format || exit 1

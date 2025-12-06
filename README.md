@@ -363,6 +363,47 @@ jobs:
 
 ---
 
+## Development
+
+### Git Hooks
+
+This project uses [husky](https://typicode.github.io/husky/) to manage Git hooks:
+
+- **pre-commit**: Runs linter and formatter checks before committing
+- **pre-push**: Builds the project to ensure it compiles before pushing
+
+When you run `pnpm install`, husky will automatically set up these hooks.
+
+### Manual Setup
+
+If hooks are not set up automatically:
+
+```bash
+pnpm install
+pnpm run prepare
+```
+
+### Running Checks Manually
+
+```bash
+# Run linter
+pnpm run lint
+
+# Fix linting issues
+pnpm run lint:fix
+
+# Check formatting
+pnpm run format
+
+# Fix formatting
+pnpm run format:write
+
+# Build the project
+pnpm run build
+```
+
+---
+
 ## Contributing
 
 Issues and Pull Requests are welcome!
