@@ -3,10 +3,12 @@ import { Command } from "commander";
 import { loadConfig } from "../config/loadConfig.js";
 import { format, logger, setLogLevel } from "../utils/logger.js";
 import { pathExists, readPackageJson } from "../utils/fs.js";
-import { renderResult } from "../utils/output.js";
+import { renderResult, Timer } from "../utils/output.js";
 import { loadPlugins, runPlugins } from "../plugins/index.js";
 import { ScanResult } from "../types/result.js";
 import { ScanContext } from "../types/context.js";
+import { Cache } from "../utils/cache.js";
+import { handleError } from "../utils/errors.js";
 
 type Detection = {
   hasReact: boolean;
@@ -56,30 +58,52 @@ const detectProject = async (cwd: string): Promise<Detection | null> => {
   return { hasReact, hasNext, versions, hasAppDir, usesRscPackages, likelyRsc };
 };
 
-export const performScan = async (context: ScanContext): Promise<ScanResult> => {
-  const detection = await detectProject(context.cwd);
+export const performScan = async (context: ScanContext, useCache = true): Promise<ScanResult> => {
+  const cache = new Cache(context.cwd, context.config);
+  const cacheKey = `scan-${context.cwd}`;
 
-  if (!detection) {
-    return {
-      ok: false,
-      warnings: [],
-      errors: ["Could not read package.json. Please run inside a React or Next.js project."],
-    };
+  if (useCache) {
+    const cached = await cache.get<ScanResult>(cacheKey);
+    if (cached) {
+      if (context.debug) logger.debug("Using cached scan result");
+      return cached;
+    }
   }
 
-  if (!detection.hasReact && !detection.hasNext) {
-    return {
-      ok: false,
-      warnings: [],
-      errors: [
-        "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
-      ],
-    };
+  try {
+    const detection = await detectProject(context.cwd);
+
+    if (!detection) {
+      return {
+        ok: false,
+        warnings: [],
+        errors: ["Could not read package.json. Please run inside a React or Next.js project."],
+      };
+    }
+
+    if (!detection.hasReact && !detection.hasNext) {
+      return {
+        ok: false,
+        warnings: [],
+        errors: [
+          "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
+        ],
+      };
+    }
+
+    if (context.debug) logger.debug(`scan detection: ${JSON.stringify(detection, null, 2)}`);
+
+    const result = { ok: true, warnings: [], errors: [], meta: detection };
+
+    if (useCache) {
+      await cache.set(cacheKey, result);
+    }
+
+    return result;
+  } catch (error) {
+    const errorMsg = handleError(error, context.debug);
+    return { ok: false, warnings: [], errors: [errorMsg] };
   }
-
-  if (context.debug) logger.debug(`scan detection: ${JSON.stringify(detection, null, 2)}`);
-
-  return { ok: true, warnings: [], errors: [], meta: detection };
 };
 
 const printScanResult = (result: ScanResult): void => {
@@ -128,13 +152,17 @@ export const registerScanCommand = (program: Command): void => {
   program
     .command("scan")
     .option("--debug", "Enable debug logging")
+    .option("--no-cache", "Disable cache")
+    .option("--quiet", "Minimal output")
     .description("Scan project for React/Next.js presence and RSC signals.")
-    .action(async (options: { debug?: boolean }) => {
+    .action(async (options: { debug?: boolean; cache?: boolean; quiet?: boolean }) => {
+      const timer = new Timer();
       const cwd = path.resolve(process.cwd());
       if (options.debug) setLogLevel("debug");
       const config = await loadConfig(cwd);
       const context: ScanContext = { cwd, command: "scan", config, debug: Boolean(options.debug) };
-      const base = await performScan(context);
+      const useCache = options.cache !== false;
+      const base = await performScan(context, useCache);
       const plugins = await loadPlugins(cwd, Boolean(options.debug));
       const pluginResult = await runPlugins(plugins, { ...context, baseResult: base });
       const merged: ScanResult = {
@@ -143,7 +171,11 @@ export const registerScanCommand = (program: Command): void => {
         errors: [...base.errors, ...pluginResult.errors],
         meta: { ...base.meta, ...pluginResult.meta },
       };
-      renderResult(merged, printScanResult);
+      renderResult(merged, printScanResult, {
+        quiet: Boolean(options.quiet),
+        showTiming: true,
+        elapsed: timer.elapsed(),
+      });
       if (!merged.ok) process.exitCode = 1;
     });
 };

@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { globby } from "globby";
 
 export type PackageJson = {
   name?: string;
@@ -45,51 +46,72 @@ export const writeFileSafe = async (filePath: string, content: string): Promise<
   await fs.writeFile(filePath, content, "utf8");
 };
 
+const DEFAULT_LARGE_DIRS = [
+  "**/node_modules/**",
+  "**/.next/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/.turbo/**",
+  "**/.cache/**",
+  "**/out/**",
+  "**/.git/**",
+];
+
 export const findFilesWithString = async (
   rootDir: string,
   needle: string,
   extensions: string[] = [".js", ".jsx", ".ts", ".tsx"],
-  ignore: string[] = []
+  ignore: string[] = [],
+  ignoreLargeDirs = true
 ): Promise<string[]> => {
-  const matches: string[] = [];
-  const queue: string[] = [rootDir];
+  const patterns = extensions.map((ext) => `**/*${ext}`);
+  const ignorePatterns = [...ignore, ...(ignoreLargeDirs ? DEFAULT_LARGE_DIRS : [])];
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) continue;
+  try {
+    const files = await globby(patterns, {
+      cwd: rootDir,
+      absolute: true,
+      ignore: ignorePatterns,
+      gitignore: true,
+    });
 
-    let entries;
-    try {
-      entries = await fs.readdir(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      if (ignore.some((pattern) => fullPath.includes(pattern))) {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        queue.push(fullPath);
-        continue;
-      }
-
-      if (!extensions.some((ext) => entry.name.endsWith(ext))) {
-        continue;
-      }
-
-      try {
-        const fileContent = await fs.readFile(fullPath, "utf8");
-        if (fileContent.includes(needle)) {
-          matches.push(fullPath);
+    const matches: string[] = [];
+    await Promise.all(
+      files.map(async (file: string) => {
+        try {
+          const content = await fs.readFile(file, "utf8");
+          if (content.includes(needle)) {
+            matches.push(file);
+          }
+        } catch {
+          // Skip files that can't be read
         }
-      } catch {
-        continue;
-      }
-    }
-  }
+      })
+    );
 
-  return matches;
+    return matches;
+  } catch {
+    return [];
+  }
+};
+
+export const findFiles = async (
+  rootDir: string,
+  extensions: string[] = [".js", ".jsx", ".ts", ".tsx"],
+  ignore: string[] = [],
+  ignoreLargeDirs = true
+): Promise<string[]> => {
+  const patterns = extensions.map((ext) => `**/*${ext}`);
+  const ignorePatterns = [...ignore, ...(ignoreLargeDirs ? DEFAULT_LARGE_DIRS : [])];
+
+  try {
+    return await globby(patterns, {
+      cwd: rootDir,
+      absolute: true,
+      ignore: ignorePatterns,
+      gitignore: true,
+    });
+  } catch {
+    return [];
+  }
 };

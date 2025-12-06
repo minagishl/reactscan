@@ -6,18 +6,36 @@ export type RemoteConfig = {
   timeout?: number;
 };
 
+export type CacheConfig = {
+  enabled?: boolean;
+  ttl?: number;
+};
+
+export type PerformanceConfig = {
+  ignoreLargeDirs?: boolean;
+};
+
 export type ReactscanConfig = {
   ignore?: string[];
   remote?: RemoteConfig;
   pluginsDir?: string;
+  cache?: CacheConfig;
+  performance?: PerformanceConfig;
 };
 
 const defaultConfig: Required<ReactscanConfig> = {
   ignore: [],
   remote: {
-    timeout: 5000,
+    timeout: 8000,
   },
   pluginsDir: "plugins",
+  cache: {
+    enabled: true,
+    ttl: 1800000, // 30 minutes in milliseconds
+  },
+  performance: {
+    ignoreLargeDirs: true,
+  },
 };
 
 const CONFIG_FILES = [
@@ -71,5 +89,13 @@ export const loadConfig = async (cwd: string): Promise<ReactscanConfig> => {
       timeout: userConfig?.remote?.timeout ?? defaultConfig.remote.timeout,
     },
     pluginsDir: userConfig?.pluginsDir ?? defaultConfig.pluginsDir,
+    cache: {
+      enabled: userConfig?.cache?.enabled ?? defaultConfig.cache.enabled,
+      ttl: userConfig?.cache?.ttl ?? defaultConfig.cache.ttl,
+    },
+    performance: {
+      ignoreLargeDirs:
+        userConfig?.performance?.ignoreLargeDirs ?? defaultConfig.performance.ignoreLargeDirs,
+    },
   };
 };

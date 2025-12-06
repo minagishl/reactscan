@@ -5,10 +5,13 @@ import { loadConfig } from "../config/loadConfig.js";
 import { format, logger, setLogLevel } from "../utils/logger.js";
 import { findFilesWithString, pathExists, readPackageJson } from "../utils/fs.js";
 import { confirmPrompt } from "../utils/prompt.js";
-import { renderResult } from "../utils/output.js";
+import { renderResult, Timer } from "../utils/output.js";
 import { loadPlugins, runPlugins } from "../plugins/index.js";
 import { ScanContext } from "../types/context.js";
 import { ScanResult } from "../types/result.js";
+import { Cache } from "../utils/cache.js";
+import { analyzeHtml } from "../utils/parser.js";
+import { handleError } from "../utils/errors.js";
 
 type LocalMeta = {
   type: "local";
@@ -33,9 +36,6 @@ type RemoteMeta = {
 const isLocalhost = (url: URL): boolean =>
   url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
 
-const stripScripts = (html: string): string =>
-  html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, "");
-
 const serverActionPatterns = [
   "use server",
   "__SERVER_ACTIONS__",
@@ -44,7 +44,21 @@ const serverActionPatterns = [
   "serverActions",
 ];
 
-export const analyzeLocalRsc = async (context: ScanContext): Promise<ScanResult> => {
+export const analyzeLocalRsc = async (
+  context: ScanContext,
+  useCache = true
+): Promise<ScanResult> => {
+  const cache = new Cache(context.cwd, context.config);
+  const cacheKey = `local-rsc-${context.cwd}`;
+
+  if (useCache) {
+    const cached = await cache.get<ScanResult>(cacheKey);
+    if (cached) {
+      if (context.debug) logger.debug("Using cached local RSC analysis");
+      return cached;
+    }
+  }
+
   const pkg = await readPackageJson(context.cwd);
   if (!pkg) {
     return {
@@ -62,12 +76,15 @@ export const analyzeLocalRsc = async (context: ScanContext): Promise<ScanResult>
 
   const appDir = path.join(context.cwd, "app");
   const appDirExists = await pathExists(appDir);
+  const ignoreLargeDirs = context.config.performance?.ignoreLargeDirs ?? true;
+
   const serverActionFiles = appDirExists
     ? await findFilesWithString(
         appDir,
         "use server",
         [".js", ".jsx", ".ts", ".tsx"],
-        context.config.ignore
+        context.config.ignore,
+        ignoreLargeDirs
       )
     : [];
   const routerMarkers = appDirExists
@@ -75,7 +92,8 @@ export const analyzeLocalRsc = async (context: ScanContext): Promise<ScanResult>
         appDir,
         "__NEXT_ROUTER_APP",
         [".js", ".jsx", ".ts", ".tsx"],
-        context.config.ignore
+        context.config.ignore,
+        ignoreLargeDirs
       )
     : [];
 
@@ -99,7 +117,13 @@ export const analyzeLocalRsc = async (context: ScanContext): Promise<ScanResult>
 
   if (context.debug) logger.debug(`rsc local meta: ${JSON.stringify(meta, null, 2)}`);
 
-  return { ok: true, warnings, errors: [], meta };
+  const result = { ok: true, warnings, errors: [], meta };
+
+  if (useCache) {
+    await cache.set(cacheKey, result);
+  }
+
+  return result;
 };
 
 export const handleRemoteRscScan = async (
@@ -119,11 +143,15 @@ export const handleRemoteRscScan = async (
   }
 
   try {
+    const timeout = context.config.remote?.timeout ?? 8000;
     const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
-      headers: { "Accept-Encoding": "gzip, deflate, br" },
-      signal: AbortSignal.timeout(context.config.remote?.timeout ?? 5000),
+      headers: {
+        "Accept-Encoding": "gzip, deflate, br",
+        "User-Agent": "reactscan/1.1.0",
+      },
+      signal: AbortSignal.timeout(timeout),
     });
 
     const headerHints: string[] = [];
@@ -141,19 +169,42 @@ export const handleRemoteRscScan = async (
       }
     });
 
-    const rawBody = await response.text();
-    const body = stripScripts(rawBody);
-    const lowerBody = body.toLowerCase();
+    let rawBody: string;
+    try {
+      rawBody = await response.text();
+    } catch (decodeError) {
+      const msg = handleError(decodeError, context.debug);
+      return {
+        ok: false,
+        warnings: [],
+        errors: [`Failed to decode response body: ${msg}`],
+      };
+    }
 
+    const htmlAnalysis = analyzeHtml(rawBody);
     const bodyMarkers: string[] = [];
+
+    if (htmlAnalysis.hasNextjsMarkers) {
+      bodyMarkers.push("Next.js markers detected");
+    }
+    if (htmlAnalysis.hasFlightData) {
+      bodyMarkers.push("data-nextjs-flight attribute");
+    }
+
+    const lowerBody = rawBody.toLowerCase();
     if (lowerBody.includes("react-server-dom-webpack"))
       bodyMarkers.push("react-server-dom-webpack");
     if (lowerBody.includes("__next_f")) bodyMarkers.push("__next_f");
     if (/app[-_]router/i.test(lowerBody)) bodyMarkers.push("App Router marker");
 
     const serverActionMarkers: string[] = [];
+    if (htmlAnalysis.hasServerActionMarkers) {
+      serverActionMarkers.push("Server Action markers in scripts");
+    }
     for (const marker of serverActionPatterns) {
-      if (lowerBody.includes(marker.toLowerCase())) serverActionMarkers.push(marker);
+      if (lowerBody.includes(marker.toLowerCase()) && !serverActionMarkers.includes(marker)) {
+        serverActionMarkers.push(marker);
+      }
     }
 
     const meta: RemoteMeta = {
@@ -183,8 +234,8 @@ export const handleRemoteRscScan = async (
 
     return { ok: true, warnings, errors: [], meta };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown network error";
-    return { ok: false, warnings: [], errors: [`Network error during remote scan: ${message}`] };
+    const errorMsg = handleError(error, context.debug);
+    return { ok: false, warnings: [], errors: [errorMsg] };
   }
 };
 
@@ -243,14 +294,32 @@ export const registerRscCommand = (program: Command): void => {
     .command("rsc")
     .argument("[pathOrUrl]", "Local directory or URL to inspect.")
     .option("--debug", "Enable debug logging")
+    .option("--no-cache", "Disable cache")
+    .option("--quiet", "Minimal output")
     .description("Inspect Next.js App Router and server action usage.")
-    .action(async (pathOrUrl?: string, options?: { debug?: boolean }) => {
-      const result = await runRsc(pathOrUrl, Boolean(options?.debug));
-      if (!result.ok) process.exitCode = 1;
-    });
+    .action(
+      async (
+        pathOrUrl?: string,
+        options?: { debug?: boolean; cache?: boolean; quiet?: boolean }
+      ) => {
+        const result = await runRsc(
+          pathOrUrl,
+          Boolean(options?.debug),
+          options?.cache !== false,
+          Boolean(options?.quiet)
+        );
+        if (!result.ok) process.exitCode = 1;
+      }
+    );
 };
 
-export const runRsc = async (pathOrUrl?: string, debug = false): Promise<ScanResult> => {
+export const runRsc = async (
+  pathOrUrl?: string,
+  debug = false,
+  useCache = true,
+  quiet = false
+): Promise<ScanResult> => {
+  const timer = new Timer();
   const input = pathOrUrl || process.cwd();
   if (debug) setLogLevel("debug");
   const isUrl = (() => {
@@ -266,7 +335,7 @@ export const runRsc = async (pathOrUrl?: string, debug = false): Promise<ScanRes
   const context: ScanContext = { cwd, command: isUrl ? "remote-rsc" : "rsc", config, debug, input };
   const base = isUrl
     ? await handleRemoteRscScan(new URL(input), context, true)
-    : await analyzeLocalRsc(context);
+    : await analyzeLocalRsc(context, useCache);
   const plugins = await loadPlugins(cwd, debug);
   const pluginResult = await runPlugins(plugins, { ...context, baseResult: base });
   const merged: ScanResult = {
@@ -275,11 +344,15 @@ export const runRsc = async (pathOrUrl?: string, debug = false): Promise<ScanRes
     errors: [...base.errors, ...pluginResult.errors],
     meta: { ...base.meta, ...pluginResult.meta },
   };
-  renderResult(merged, (res) => {
-    const meta = res.meta as LocalMeta | RemoteMeta | undefined;
-    if (!meta) return;
-    if (meta.type === "local") printLocalRsc(meta);
-    else printRemoteRsc(meta);
-  });
+  renderResult(
+    merged,
+    (res) => {
+      const meta = res.meta as LocalMeta | RemoteMeta | undefined;
+      if (!meta) return;
+      if (meta.type === "local") printLocalRsc(meta);
+      else printRemoteRsc(meta);
+    },
+    { quiet, showTiming: true, elapsed: timer.elapsed() }
+  );
   return merged;
 };
