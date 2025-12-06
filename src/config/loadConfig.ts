@@ -1,5 +1,6 @@
 import path from "path";
-import { readJsonFile } from "../utils/fs.js";
+import { pathToFileURL } from "url";
+import { readJsonFile, pathExists } from "../utils/fs.js";
 
 export type RemoteConfig = {
   timeout?: number;
@@ -19,9 +20,50 @@ const defaultConfig: Required<ReactscanConfig> = {
   pluginsDir: "plugins",
 };
 
+const CONFIG_FILES = [
+  ".reactscanrc.json",
+  ".reactscanrc",
+  "reactscan.config.json",
+  "reactscan.config.js",
+  "reactscan.config.mjs",
+  "reactscan.config.cjs",
+];
+
+const loadConfigFromPackageJson = async (cwd: string): Promise<ReactscanConfig | null> => {
+  const pkgPath = path.join(cwd, "package.json");
+  const pkg = await readJsonFile<{ reactscan?: ReactscanConfig }>(pkgPath);
+  return pkg?.reactscan ?? null;
+};
+
+const loadJsConfig = async (configPath: string): Promise<ReactscanConfig | null> => {
+  try {
+    const mod = await import(pathToFileURL(configPath).toString());
+    return mod.default ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export const loadConfig = async (cwd: string): Promise<ReactscanConfig> => {
-  const configPath = path.join(cwd, "reactscan.config.json");
-  const userConfig = await readJsonFile<ReactscanConfig>(configPath);
+  let userConfig: ReactscanConfig | null = null;
+
+  // Try config files in order
+  for (const fileName of CONFIG_FILES) {
+    const configPath = path.join(cwd, fileName);
+    if (await pathExists(configPath)) {
+      if (fileName.endsWith(".js") || fileName.endsWith(".mjs") || fileName.endsWith(".cjs")) {
+        userConfig = await loadJsConfig(configPath);
+      } else {
+        userConfig = await readJsonFile<ReactscanConfig>(configPath);
+      }
+      if (userConfig) break;
+    }
+  }
+
+  // Fallback to package.json if no config file found
+  if (!userConfig) {
+    userConfig = await loadConfigFromPackageJson(cwd);
+  }
 
   return {
     ignore: userConfig?.ignore ?? defaultConfig.ignore,
