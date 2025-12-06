@@ -353,7 +353,7 @@ reactscan scan --no-cache
 {
   "cache": {
     "enabled": false
-  }
+  },
 }
 ```
 
@@ -393,12 +393,12 @@ jobs:
 
 ### Usage in pre-commit hooks
 
-```json
+```jsonc
 // package.json
 {
   "scripts": {
-    "precommit": "reactscan scan --quiet && reactscan deps --quiet"
-  }
+    "precommit": "reactscan scan --quiet && reactscan deps --quiet",
+  },
 }
 ```
 
