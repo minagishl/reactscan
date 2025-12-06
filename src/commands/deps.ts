@@ -2,9 +2,12 @@ import path from "path";
 import { Command } from "commander";
 import { minVersion, gt } from "semver";
 import { fetch } from "undici";
-import { logger } from "../utils/logger.js";
+import { logger, setLogLevel } from "../utils/logger.js";
 import { readPackageJson } from "../utils/fs.js";
 import { ScanResult } from "../types/result.js";
+import { loadConfig } from "../config/loadConfig.js";
+import { loadPlugins, runPlugins } from "../plugins/index.js";
+import { ScanContext } from "../types/context.js";
 
 const bannedVersions = new Set(["19.0.0", "19.1.0", "19.1.1", "19.2.0"]);
 const rscPackages = ["react-server-dom-webpack", "react-server-dom-turbopack"];
@@ -27,8 +30,8 @@ const fetchLatestVersion = async (pkgName: string): Promise<string | null> => {
   }
 };
 
-export const performDepsCheck = async (cwd = process.cwd()): Promise<ScanResult> => {
-  const pkg = await readPackageJson(cwd);
+export const performDepsCheck = async (context: ScanContext): Promise<ScanResult> => {
+  const pkg = await readPackageJson(context.cwd);
 
   if (!pkg) {
     return {
@@ -77,12 +80,14 @@ export const performDepsCheck = async (cwd = process.cwd()): Promise<ScanResult>
       outdated[name] = null;
       continue;
     }
-    const isOutdated = installed ? gt(installed, latest) : false;
+    const isOutdated = installed ? gt(latest, installed) : false;
     outdated[name] = isOutdated;
     if (isOutdated && installed) {
       warnings.push(`${name} ${installed.version} is behind latest ${latest}.`);
     }
   }
+
+  if (context.debug) logger.debug(`deps meta: ${JSON.stringify({ issues, outdated }, null, 2)}`);
 
   return {
     ok: errors.length === 0,
@@ -92,24 +97,32 @@ export const performDepsCheck = async (cwd = process.cwd()): Promise<ScanResult>
   };
 };
 
-export const runDepsCheck = async (cwd = process.cwd()): Promise<ScanResult> => {
-  const outcome = await performDepsCheck(cwd);
+export const runDeps = async (cwd: string, debug = false): Promise<ScanResult> => {
+  if (debug) setLogLevel("debug");
+  const config = await loadConfig(cwd);
+  const context: ScanContext = { cwd, command: "deps", config, debug };
+  const base = await performDepsCheck(context);
+  const plugins = await loadPlugins(cwd, debug);
+  const pluginResult = await runPlugins(plugins, { ...context, baseResult: base });
+  const merged: ScanResult = {
+    ok: base.ok && pluginResult.ok,
+    warnings: [...base.warnings, ...pluginResult.warnings],
+    errors: [...base.errors, ...pluginResult.errors],
+    meta: { ...base.meta, ...pluginResult.meta },
+  };
 
-  if (!outcome.ok) {
-    outcome.errors.forEach((err) => logger.error(err));
-    outcome.warnings.forEach((warn) => logger.warn(warn));
-    return outcome;
-  }
+  if (!merged.ok) merged.errors.forEach((err) => logger.error(err));
+  merged.warnings.forEach((warn) => logger.warn(warn));
 
-  const meta = (outcome.meta || {}) as {
+  const meta = (merged.meta || {}) as {
     issues?: string[];
     outdated?: Record<string, boolean | null>;
   };
   const issues = meta.issues || [];
 
-  if (issues.length === 0) {
+  if (merged.ok && issues.length === 0) {
     logger.success("No known risky dependency combinations detected.");
-  } else {
+  } else if (issues.length > 0) {
     logger.heading("Dependency warnings:");
     issues.forEach((issue) => logger.warn(`- ${issue}`));
   }
@@ -121,18 +134,17 @@ export const runDepsCheck = async (cwd = process.cwd()): Promise<ScanResult> => 
     }
   });
 
-  outcome.warnings.forEach((warn) => logger.warn(warn));
-  return outcome;
+  return merged;
 };
 
 export const registerDepsCommand = (program: Command): void => {
   program
     .command("deps")
+    .option("--debug", "Enable debug logging")
     .description("Inspect dependencies for known risky versions.")
-    .action(async () => {
-      const outcome = await runDepsCheck(path.resolve(process.cwd()));
-      if (!outcome.ok) {
-        process.exitCode = 1;
-      }
+    .action(async (options: { debug?: boolean }) => {
+      const cwd = path.resolve(process.cwd());
+      const result = await runDeps(cwd, Boolean(options.debug));
+      if (!result.ok) process.exitCode = 1;
     });
 };

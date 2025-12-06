@@ -48,7 +48,8 @@ export const writeFileSafe = async (filePath: string, content: string): Promise<
 export const findFilesWithString = async (
   rootDir: string,
   needle: string,
-  extensions: string[] = [".js", ".jsx", ".ts", ".tsx"]
+  extensions: string[] = [".js", ".jsx", ".ts", ".tsx"],
+  ignore: string[] = []
 ): Promise<string[]> => {
   const matches: string[] = [];
   const queue: string[] = [rootDir];
@@ -66,6 +67,10 @@ export const findFilesWithString = async (
 
     for (const entry of entries) {
       const fullPath = path.join(current, entry.name);
+      if (ignore.some((pattern) => fullPath.includes(pattern))) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
         queue.push(fullPath);
         continue;

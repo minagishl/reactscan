@@ -1,6 +1,6 @@
 {
   "name": "reactscan",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Non-intrusive CLI to statically inspect React / Next.js projects.",
   "type": "module",
   "bin": {

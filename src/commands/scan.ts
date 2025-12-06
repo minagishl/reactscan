@@ -1,8 +1,12 @@
 import path from "path";
 import { Command } from "commander";
-import { format, logger } from "../utils/logger.js";
+import { loadConfig } from "../config/loadConfig.js";
+import { format, logger, setLogLevel } from "../utils/logger.js";
 import { pathExists, readPackageJson } from "../utils/fs.js";
+import { renderResult } from "../utils/output.js";
+import { loadPlugins, runPlugins } from "../plugins/index.js";
 import { ScanResult } from "../types/result.js";
+import { ScanContext } from "../types/context.js";
 
 type Detection = {
   hasReact: boolean;
@@ -52,9 +56,36 @@ const detectProject = async (cwd: string): Promise<Detection | null> => {
   return { hasReact, hasNext, versions, hasAppDir, usesRscPackages, likelyRsc };
 };
 
-const printScanResult = (detection: Detection): void => {
-  logger.heading("reactscan results:");
+export const performScan = async (context: ScanContext): Promise<ScanResult> => {
+  const detection = await detectProject(context.cwd);
 
+  if (!detection) {
+    return {
+      ok: false,
+      warnings: [],
+      errors: ["Could not read package.json. Please run inside a React or Next.js project."],
+    };
+  }
+
+  if (!detection.hasReact && !detection.hasNext) {
+    return {
+      ok: false,
+      warnings: [],
+      errors: [
+        "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
+      ],
+    };
+  }
+
+  if (context.debug) logger.debug(`scan detection: ${JSON.stringify(detection, null, 2)}`);
+
+  return { ok: true, warnings: [], errors: [], meta: detection };
+};
+
+const printScanResult = (result: ScanResult): void => {
+  const detection = result.meta as Detection | undefined;
+  if (!detection) return;
+  logger.heading("reactscan results:");
   logger.info(
     `${format.label("framework")} React: ${detection.hasReact ? format.success("yes") : "no"}`
   );
@@ -64,14 +95,10 @@ const printScanResult = (detection: Detection): void => {
 
   const { versions } = detection;
   logger.info(
-    `${format.label("version")} react: ${
-      versions["react"] ? format.value(versions["react"]!) : "not found"
-    }`
+    `${format.label("version")} react: ${versions["react"] ? format.value(versions["react"]!) : "not found"}`
   );
   logger.info(
-    `${format.label("version")} next: ${
-      versions["next"] ? format.value(versions["next"]!) : "not found"
-    }`
+    `${format.label("version")} next: ${versions["next"] ? format.value(versions["next"]!) : "not found"}`
   );
   logger.info(
     `${format.label("version")} react-server-dom-webpack: ${
@@ -97,47 +124,26 @@ const printScanResult = (detection: Detection): void => {
   }
 };
 
-export const performScan = async (cwd = process.cwd()): Promise<ScanResult> => {
-  const detection = await detectProject(cwd);
-
-  if (!detection) {
-    return {
-      ok: false,
-      warnings: [],
-      errors: ["Could not read package.json. Please run inside a React or Next.js project."],
-    };
-  }
-
-  if (!detection.hasReact && !detection.hasNext) {
-    return {
-      ok: false,
-      warnings: [],
-      errors: [
-        "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
-      ],
-    };
-  }
-
-  return { ok: true, warnings: [], errors: [], meta: detection };
-};
-
-export const runScan = async (cwd = process.cwd()): Promise<ScanResult> => {
-  const outcome = await performScan(cwd);
-  if (outcome.ok) {
-    printScanResult(outcome.meta as Detection);
-  } else {
-    outcome.errors.forEach((err) => logger.error(err));
-    outcome.warnings.forEach((warn) => logger.warn(warn));
-  }
-  return outcome;
-};
-
 export const registerScanCommand = (program: Command): void => {
   program
     .command("scan")
+    .option("--debug", "Enable debug logging")
     .description("Scan project for React/Next.js presence and RSC signals.")
-    .action(async () => {
+    .action(async (options: { debug?: boolean }) => {
       const cwd = path.resolve(process.cwd());
-      await runScan(cwd);
+      if (options.debug) setLogLevel("debug");
+      const config = await loadConfig(cwd);
+      const context: ScanContext = { cwd, command: "scan", config, debug: Boolean(options.debug) };
+      const base = await performScan(context);
+      const plugins = await loadPlugins(cwd, Boolean(options.debug));
+      const pluginResult = await runPlugins(plugins, { ...context, baseResult: base });
+      const merged: ScanResult = {
+        ok: base.ok && pluginResult.ok,
+        warnings: [...base.warnings, ...pluginResult.warnings],
+        errors: [...base.errors, ...pluginResult.errors],
+        meta: { ...base.meta, ...pluginResult.meta },
+      };
+      renderResult(merged, printScanResult);
+      if (!merged.ok) process.exitCode = 1;
     });
 };
