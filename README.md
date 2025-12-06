@@ -15,11 +15,11 @@ Non-intrusive CLI to statically inspect React / Next.js projects.
 ## Installation
 
 ```bash
-npm install -g reactscan
+npm install -g @minagishl/reactscan
 # or
-pnpm add -g reactscan
+pnpm add -g @minagishl/reactscan
 # or
-yarn global add reactscan
+yarn global add @minagishl/reactscan
 ```
 
 ## Usage
@@ -345,7 +345,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
-      - run: npm install -g reactscan
+      - run: npm install -g @minagishl/reactscan
       - run: reactscan scan
       - run: reactscan deps
 ```

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2025-12-07
+
+### Changed
+
+- **BREAKING**: Package name changed from `reactscan` to `@minagishl/reactscan`
+  - Install command is now `npm install -g @minagishl/reactscan`
+  - CLI command remains `reactscan`
+
 ### Added
 
 - Git hooks management with husky ([2badd70](https://github.com/minagishl/reactscan/commit/2badd70))
@@ -17,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configuration examples in multiple formats
   - Plugin API documentation
 - MIT License ([a4b8d99](https://github.com/minagishl/reactscan/commit/a4b8d99))
+- Added `typecheck` script to package.json
+- Added `husky@^9.1.7` to devDependencies
 
 ## [1.1.0] - 2025-12-07
 
@@ -206,7 +216,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated version to 0.1.0 ([b2ec280](https://github.com/minagishl/reactscan/commit/b2ec280))
 
-[unreleased]: https://github.com/minagishl/reactscan/compare/v1.1.0...HEAD
+[unreleased]: https://github.com/minagishl/reactscan/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/minagishl/reactscan/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/minagishl/reactscan/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/minagishl/reactscan/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/minagishl/reactscan/compare/v0.2.0...v0.3.0

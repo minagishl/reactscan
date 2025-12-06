@@ -1,6 +1,6 @@
 {
-  "name": "reactscan",
-  "version": "1.0.0",
+  "name": "@minagishl/reactscan",
+  "version": "1.2.0",
   "description": "Non-intrusive CLI to statically inspect React / Next.js projects.",
   "type": "module",
   "bin": {
@@ -12,6 +12,23 @@
   "files": [
     "dist"
   ],
+  "keywords": [
+    "react",
+    "nextjs",
+    "security",
+    "cli",
+    "static-analysis"
+  ],
+  "author": "minagishl",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minagishl/reactscan.git"
+  },
+  "homepage": "https://github.com/minagishl/reactscan#readme",
+  "bugs": {
+    "url": "https://github.com/minagishl/reactscan/issues"
+  },
   "scripts": {
     "prepare": "husky",
     "lint": "eslint .",
