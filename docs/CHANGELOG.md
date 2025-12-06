@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2025-12-07
+
 ### Added
 
 - `mcp` command to start a Model Context Protocol stdio server exposing `scan`, `deps`, `rsc`, and `cve` tools.
+
+### Changed
+
+- Migrated tooling and CI from pnpm to Bun (husky scripts and workflows).
+- Updated docs to prefer JSONC formatting where applicable.
 
 ## [1.2.1] - 2025-12-09
 
@@ -228,7 +235,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated version to 0.1.0 ([b2ec280](https://github.com/minagishl/reactscan/commit/b2ec280))
 
-[unreleased]: https://github.com/minagishl/reactscan/compare/v1.2.1...HEAD
+[unreleased]: https://github.com/minagishl/reactscan/compare/v1.2.2...HEAD
+[1.2.2]: https://github.com/minagishl/reactscan/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/minagishl/reactscan/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/minagishl/reactscan/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/minagishl/reactscan/compare/v1.0.0...v1.1.0
