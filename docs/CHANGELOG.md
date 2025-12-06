@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated tooling and CI from pnpm to Bun (husky scripts and workflows).
 - Updated docs to prefer JSONC formatting where applicable.
 
-## [1.2.1] - 2025-12-09
+## [1.2.1] - 2025-12-07
 
 ### Added
 
