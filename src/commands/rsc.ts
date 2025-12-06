@@ -4,16 +4,18 @@ import { fetch } from "undici";
 import { format, logger } from "../utils/logger.js";
 import { findFilesWithString, pathExists, readPackageJson } from "../utils/fs.js";
 import { confirmPrompt } from "../utils/prompt.js";
+import { ScanResult } from "../types/result.js";
 
-type LocalRscResult = {
+type LocalMeta = {
   type: "local";
   hasNext: boolean;
   usesRscPackages: boolean;
   appDirExists: boolean;
   serverActionFiles: string[];
+  routerMarkers: string[];
 };
 
-type RemoteRscResult = {
+type RemoteMeta = {
   type: "remote";
   url: string;
   status: number;
@@ -21,21 +23,30 @@ type RemoteRscResult = {
   contentTypeRsc: boolean;
   headerHints: string[];
   bodyMarkers: string[];
+  serverActionMarkers: string[];
 };
-
-export type RscOutcome =
-  | { ok: true; result: LocalRscResult | RemoteRscResult }
-  | { ok: false; message: string };
 
 const isLocalhost = (url: URL): boolean =>
   url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
 
-const analyzeLocalRsc = async (cwd: string): Promise<RscOutcome> => {
+const stripScripts = (html: string): string =>
+  html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gi, "");
+
+const serverActionPatterns = [
+  "use server",
+  "__SERVER_ACTIONS__",
+  "serverActionsManifest",
+  "server_actions",
+  "serverActions",
+];
+
+export const analyzeLocalRsc = async (cwd = process.cwd()): Promise<ScanResult> => {
   const pkg = await readPackageJson(cwd);
   if (!pkg) {
     return {
       ok: false,
-      message: "package.json not found. Run this command in a project directory.",
+      warnings: [],
+      errors: ["package.json not found. Run this command in a project directory."],
     };
   }
 
@@ -48,59 +59,72 @@ const analyzeLocalRsc = async (cwd: string): Promise<RscOutcome> => {
   const appDir = path.join(cwd, "app");
   const appDirExists = await pathExists(appDir);
   const serverActionFiles = appDirExists ? await findFilesWithString(appDir, "use server") : [];
+  const routerMarkers = appDirExists ? await findFilesWithString(appDir, "__NEXT_ROUTER_APP") : [];
 
-  return {
-    ok: true,
-    result: { type: "local", hasNext, usesRscPackages, appDirExists, serverActionFiles },
+  const warnings: string[] = [];
+  if (!hasNext && !appDirExists)
+    warnings.push("Next.js App Router signals not found. RSC is unlikely here.");
+  if (appDirExists && serverActionFiles.length === 0) {
+    warnings.push(
+      'No "use server" markers found. If you use Server Actions, ensure files include the directive.'
+    );
+  }
+
+  const meta: LocalMeta = {
+    type: "local",
+    hasNext,
+    usesRscPackages,
+    appDirExists,
+    serverActionFiles,
+    routerMarkers,
   };
+
+  return { ok: true, warnings, errors: [], meta };
 };
 
-const printLocalRsc = (result: LocalRscResult): void => {
+const printLocalRsc = (meta: LocalMeta): void => {
   logger.heading("RSC diagnosis:");
   logger.info(
-    `${format.label("next.js")} ${result.hasNext ? format.value("found") : "not detected"}`
+    `${format.label("next.js")} ${meta.hasNext ? format.value("found") : "not detected"}`
   );
   logger.info(
-    `${format.label("app dir")} ${result.appDirExists ? format.value("present") : "missing"}`
+    `${format.label("app dir")} ${meta.appDirExists ? format.value("present") : "missing"}`
   );
   logger.info(
-    `${format.label("rsc pkgs")} ${result.usesRscPackages ? format.value("found") : "not found"}`
+    `${format.label("rsc pkgs")} ${meta.usesRscPackages ? format.value("found") : "not found"}`
   );
   logger.info(
     `${format.label("server actions")} ${
-      result.serverActionFiles.length > 0
-        ? format.value(`${result.serverActionFiles.length} file(s)`)
+      meta.serverActionFiles.length > 0
+        ? format.value(`${meta.serverActionFiles.length} file(s)`)
+        : "no matches"
+    }`
+  );
+  logger.info(
+    `${format.label("router marker")} ${
+      meta.routerMarkers.length > 0
+        ? format.value(`${meta.routerMarkers.length} file(s) with __NEXT_ROUTER_APP`)
         : "no matches"
     }`
   );
 
-  if (!result.hasNext && !result.appDirExists) {
-    logger.warn("Next.js App Router signals not found. RSC is unlikely here.");
-    return;
-  }
-
-  if (result.appDirExists) {
+  if (meta.appDirExists) {
     logger.success("App Router directory detected. RSC support is likely enabled.");
   }
-
-  if (result.serverActionFiles.length > 0) {
+  if (meta.serverActionFiles.length > 0) {
     logger.success('Server Actions detected via "use server".');
-  } else {
-    logger.warn(
-      'No "use server" markers found. If you use Server Actions, ensure files include the directive.'
-    );
   }
 };
 
-const handleRemoteRscScan = async (url: URL): Promise<RscOutcome> => {
+export const handleRemoteRscScan = async (url: URL, promptConfirm = true): Promise<ScanResult> => {
   logger.warn("Note: reactscan performs only safe, read-only, non-intrusive checks.");
 
-  if (!isLocalhost(url)) {
+  if (!isLocalhost(url) && promptConfirm) {
     logger.info(`This action will scan an external site: ${url.toString()}`);
     logger.info("Only safe, non-intrusive checks will be performed.");
     const confirmed = await confirmPrompt("Do you want to continue? (y/N) ");
     if (!confirmed) {
-      return { ok: false, message: "Scan cancelled by user." };
+      return { ok: false, warnings: [], errors: ["Scan cancelled by user."] };
     }
   }
 
@@ -108,6 +132,9 @@ const handleRemoteRscScan = async (url: URL): Promise<RscOutcome> => {
     const response = await fetch(url, {
       method: "GET",
       redirect: "follow",
+      headers: {
+        "Accept-Encoding": "gzip, deflate, br",
+      },
     });
 
     const headerHints: string[] = [];
@@ -127,53 +154,77 @@ const handleRemoteRscScan = async (url: URL): Promise<RscOutcome> => {
       }
     });
 
-    const body = await response.text();
-    const bodyMarkers: string[] = [];
-    if (body.includes("react-server-dom-webpack")) bodyMarkers.push("react-server-dom-webpack");
-    if (body.includes("__next_f")) bodyMarkers.push("__next_f");
-    if (body.includes("use server")) bodyMarkers.push("use server");
-    if (/app[-_]router/i.test(body)) bodyMarkers.push("App Router marker");
+    const rawBody = await response.text();
+    const body = stripScripts(rawBody);
+    const lowerBody = body.toLowerCase();
 
-    return {
-      ok: true,
-      result: {
-        type: "remote",
-        url: url.toString(),
-        status: response.status,
-        headerFlight,
-        contentTypeRsc,
-        headerHints: [...new Set(headerHints)],
-        bodyMarkers,
-      },
+    const bodyMarkers: string[] = [];
+    if (lowerBody.includes("react-server-dom-webpack"))
+      bodyMarkers.push("react-server-dom-webpack");
+    if (lowerBody.includes("__next_f")) bodyMarkers.push("__next_f");
+    if (/app[-_]router/i.test(lowerBody)) bodyMarkers.push("App Router marker");
+
+    const serverActionMarkers: string[] = [];
+    for (const marker of serverActionPatterns) {
+      if (lowerBody.includes(marker.toLowerCase())) {
+        serverActionMarkers.push(marker);
+      }
+    }
+
+    const meta: RemoteMeta = {
+      type: "remote",
+      url: url.toString(),
+      status: response.status,
+      headerFlight,
+      contentTypeRsc,
+      headerHints: [...new Set(headerHints)],
+      bodyMarkers,
+      serverActionMarkers,
     };
+
+    const warnings: string[] = [];
+    if (response.status >= 400) {
+      warnings.push(`Received HTTP status ${response.status} from remote host.`);
+    }
+    if (
+      bodyMarkers.length === 0 &&
+      serverActionMarkers.length === 0 &&
+      !headerFlight &&
+      !contentTypeRsc
+    ) {
+      warnings.push("No obvious RSC markers found in response.");
+    }
+
+    return { ok: true, warnings, errors: [], meta };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown network error";
-    return { ok: false, message: `Network error during remote scan: ${message}` };
+    return { ok: false, warnings: [], errors: [`Network error during remote scan: ${message}`] };
   }
 };
 
-const printRemoteRsc = (result: RemoteRscResult): void => {
-  logger.heading(`Remote RSC signals for ${result.url}`);
-  logger.info(`${format.label("status")} ${result.status}`);
+const printRemoteRsc = (meta: RemoteMeta): void => {
+  logger.heading(`Remote RSC signals for ${meta.url}`);
+  logger.info(`${format.label("status")} ${meta.status}`);
   logger.info(
-    `${format.label("header")} X-React-Flight: ${result.headerFlight ? format.value("present") : "missing"}`
+    `${format.label("header")} X-React-Flight: ${meta.headerFlight ? format.value("present") : "missing"}`
   );
   logger.info(
-    `${format.label("header")} Content-Type text/x-component: ${result.contentTypeRsc ? format.value("present") : "missing"}`
+    `${format.label("header")} Content-Type text/x-component: ${meta.contentTypeRsc ? format.value("present") : "missing"}`
   );
 
-  if (result.headerHints.length > 0) {
-    logger.info(`${format.label("header hints")} ${result.headerHints.join("; ")}`);
+  if (meta.headerHints.length > 0) {
+    logger.info(`${format.label("header hints")} ${meta.headerHints.join("; ")}`);
   }
 
-  if (result.bodyMarkers.length > 0) {
-    logger.success(`Body markers detected: ${result.bodyMarkers.join(", ")}`);
-  } else {
-    logger.warn("No obvious RSC markers found in response body.");
+  if (meta.bodyMarkers.length > 0) {
+    logger.success(`Body markers detected: ${meta.bodyMarkers.join(", ")}`);
+  }
+  if (meta.serverActionMarkers.length > 0) {
+    logger.success(`Server Action markers detected: ${meta.serverActionMarkers.join(", ")}`);
   }
 };
 
-export const runRscCheck = async (input?: string): Promise<RscOutcome> => {
+export const runRscCheck = async (input?: string): Promise<ScanResult> => {
   const candidate = input ?? process.cwd();
   let url: URL | null = null;
 
@@ -184,30 +235,24 @@ export const runRscCheck = async (input?: string): Promise<RscOutcome> => {
   }
 
   if (url) {
-    const outcome = await handleRemoteRscScan(url);
-    if (outcome.ok) {
-      printRemoteRsc(outcome.result as RemoteRscResult);
+    const outcome = await handleRemoteRscScan(url, true);
+    if (outcome.ok && outcome.meta && (outcome.meta as RemoteMeta).type === "remote") {
+      printRemoteRsc(outcome.meta as RemoteMeta);
     } else {
-      if ("message" in outcome) {
-        logger.error(outcome.message);
-      } else {
-        logger.error("Unknown error occurred.");
-      }
+      outcome.errors.forEach((err) => logger.error(err));
     }
+    outcome.warnings.forEach((warn) => logger.warn(warn));
     return outcome;
   }
 
   const cwd = path.isAbsolute(candidate) ? candidate : path.resolve(process.cwd(), candidate);
   const outcome = await analyzeLocalRsc(cwd);
-  if (outcome.ok) {
-    printLocalRsc(outcome.result as LocalRscResult);
+  if (outcome.ok && outcome.meta && (outcome.meta as LocalMeta).type === "local") {
+    printLocalRsc(outcome.meta as LocalMeta);
   } else {
-    if ("message" in outcome) {
-      logger.error(outcome.message);
-    } else {
-      logger.error("Unknown error occurred.");
-    }
+    outcome.errors.forEach((err) => logger.error(err));
   }
+  outcome.warnings.forEach((warn) => logger.warn(warn));
   return outcome;
 };
 
@@ -223,5 +268,3 @@ export const registerRscCommand = (program: Command): void => {
       }
     });
 };
-
-export { analyzeLocalRsc, handleRemoteRscScan };

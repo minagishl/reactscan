@@ -1,6 +1,6 @@
 {
   "name": "reactscan",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Non-intrusive CLI to statically inspect React / Next.js projects.",
   "type": "module",
   "bin": {
@@ -23,6 +23,7 @@
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
+    "semver": "^7.6.3",
     "undici": "^6.19.8"
   },
   "devDependencies": {

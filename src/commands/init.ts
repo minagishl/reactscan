@@ -19,6 +19,15 @@ jobs:
       - run: npx reactscan rsc
 `;
 
+const npmScriptsTemplate = `{
+  "scripts": {
+    "scan": "reactscan scan",
+    "scan:deps": "reactscan deps",
+    "scan:rsc": "reactscan rsc"
+  }
+}
+`;
+
 const writeGithubActions = async (cwd: string): Promise<void> => {
   const workflowPath = path.join(cwd, ".github", "workflows", "reactscan.yml");
   if (await pathExists(workflowPath)) {
@@ -29,13 +38,27 @@ const writeGithubActions = async (cwd: string): Promise<void> => {
   logger.success(`Created GitHub Actions workflow at ${workflowPath}`);
 };
 
+const writeNpmScripts = async (cwd: string): Promise<void> => {
+  const scriptsPath = path.join(cwd, "reactscan.scripts.json");
+  if (await pathExists(scriptsPath)) {
+    logger.warn(`Template already exists at ${scriptsPath}. Skipping.`);
+    return;
+  }
+  await writeFileSafe(scriptsPath, npmScriptsTemplate);
+  logger.success(`Created npm scripts template at ${scriptsPath}`);
+};
+
 export const runInit = async (template: string, cwd = process.cwd()): Promise<void> => {
   if (template === "github-actions") {
     await writeGithubActions(cwd);
     return;
   }
+  if (template === "npm") {
+    await writeNpmScripts(cwd);
+    return;
+  }
 
-  logger.error(`Unknown template "${template}". Supported: github-actions`);
+  logger.error(`Unknown template "${template}". Supported: github-actions, npm`);
 };
 
 export const registerInitCommand = (program: Command): void => {

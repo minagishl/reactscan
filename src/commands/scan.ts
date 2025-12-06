@@ -2,6 +2,7 @@ import path from "path";
 import { Command } from "commander";
 import { format, logger } from "../utils/logger.js";
 import { pathExists, readPackageJson } from "../utils/fs.js";
+import { ScanResult } from "../types/result.js";
 
 type Detection = {
   hasReact: boolean;
@@ -96,39 +97,37 @@ const printScanResult = (detection: Detection): void => {
   }
 };
 
-export type ScanOutcome = { ok: true; result: Detection } | { ok: false; message: string };
-
-export const performScan = async (cwd = process.cwd()): Promise<ScanOutcome> => {
+export const performScan = async (cwd = process.cwd()): Promise<ScanResult> => {
   const detection = await detectProject(cwd);
 
   if (!detection) {
     return {
       ok: false,
-      message: "Could not read package.json. Please run inside a React or Next.js project.",
+      warnings: [],
+      errors: ["Could not read package.json. Please run inside a React or Next.js project."],
     };
   }
 
   if (!detection.hasReact && !detection.hasNext) {
     return {
       ok: false,
-      message:
+      warnings: [],
+      errors: [
         "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
+      ],
     };
   }
 
-  return { ok: true, result: detection };
+  return { ok: true, warnings: [], errors: [], meta: detection };
 };
 
-export const runScan = async (cwd = process.cwd()): Promise<ScanOutcome> => {
+export const runScan = async (cwd = process.cwd()): Promise<ScanResult> => {
   const outcome = await performScan(cwd);
   if (outcome.ok) {
-    printScanResult(outcome.result);
+    printScanResult(outcome.meta as Detection);
   } else {
-    if ("message" in outcome) {
-      logger.error(outcome.message);
-    } else {
-      logger.error("Unknown error occurred.");
-    }
+    outcome.errors.forEach((err) => logger.error(err));
+    outcome.warnings.forEach((warn) => logger.warn(warn));
   }
   return outcome;
 };
