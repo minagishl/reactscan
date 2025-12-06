@@ -139,6 +139,29 @@ Dependency issues:
 
 ---
 
+#### `cve` - CVE Checks
+
+Scan dependencies against shipped CVE rules, or probe a remote endpoint for CVE-2025-55182 signals (based on the react2shell-scanner approach).
+
+```bash
+# Local lockfile scan (current directory)
+reactscan cve
+
+# Remote probe
+reactscan cve --url https://example.com
+# Explicit CVE with shorter timeout
+reactscan cve CVE-2025-55182 --url https://example.com --timeout 6000
+```
+
+**Options:**
+
+- `--list` - List available CVE rules
+- `--url <remote>` - Probe a remote URL for CVE-2025-55182 indicators
+- `--timeout <ms>` - Request timeout for remote scans (default: 10000)
+- `--debug` - Enable debug logging
+
+---
+
 ## Configuration
 
 You can create a configuration file in your project root. The following formats are supported:

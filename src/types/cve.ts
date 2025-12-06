@@ -46,3 +46,19 @@ export interface CVEScanResult {
   findings: Finding[];
   scannedPackages: number;
 }
+
+export interface CVEUrlScanOptions {
+  cveId?: string;
+  timeout?: number;
+  debug?: boolean;
+}
+
+export interface CVEUrlScanResult {
+  cve: string;
+  url: string;
+  vulnerable: boolean;
+  statusCode: number | null;
+  responseTime: number;
+  signature?: string;
+  error?: string;
+}

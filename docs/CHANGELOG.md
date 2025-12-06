@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cve` command now supports remote URL probes for CVE-2025-55182 (via `--url`, `--timeout`), using the react2shell-scanner detection approach.
+
 ## [1.2.0] - 2025-12-07
 
 ### Changed
