@@ -31,6 +31,20 @@ export const readPackageJson = async (cwd: string): Promise<PackageJson | null> 
   return readJsonFile<PackageJson>(pkgPath);
 };
 
+export const ensureDir = async (dirPath: string): Promise<void> => {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+  } catch {
+    throw new Error(`Failed to create directory: ${dirPath}`);
+  }
+};
+
+export const writeFileSafe = async (filePath: string, content: string): Promise<void> => {
+  const dir = path.dirname(filePath);
+  await ensureDir(dir);
+  await fs.writeFile(filePath, content, "utf8");
+};
+
 export const findFilesWithString = async (
   rootDir: string,
   needle: string,

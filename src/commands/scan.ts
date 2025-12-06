@@ -9,6 +9,7 @@ type Detection = {
   versions: Record<string, string | null>;
   hasAppDir: boolean;
   usesRscPackages: boolean;
+  likelyRsc: boolean;
 };
 
 const readVersions = (
@@ -41,7 +42,13 @@ const detectProject = async (cwd: string): Promise<Detection | null> => {
   );
   const hasAppDir = await pathExists(path.join(cwd, "app"));
 
-  return { hasReact, hasNext, versions, hasAppDir, usesRscPackages };
+  const likelyRsc =
+    hasAppDir ||
+    usesRscPackages ||
+    (hasNext &&
+      Boolean(versions["react-server-dom-webpack"] || versions["react-server-dom-turbopack"]));
+
+  return { hasReact, hasNext, versions, hasAppDir, usesRscPackages, likelyRsc };
 };
 
 const printScanResult = (detection: Detection): void => {
@@ -80,12 +87,7 @@ const printScanResult = (detection: Detection): void => {
     }`
   );
 
-  const likelyRsc =
-    detection.hasAppDir ||
-    detection.usesRscPackages ||
-    (detection.hasNext && Boolean(versions["react-server-dom-webpack"]));
-
-  if (likelyRsc) {
+  if (detection.likelyRsc) {
     logger.success("RSC usage is likely (app directory or RSC packages detected).");
   } else {
     logger.warn(
@@ -94,22 +96,41 @@ const printScanResult = (detection: Detection): void => {
   }
 };
 
-export const runScan = async (cwd = process.cwd()): Promise<void> => {
+export type ScanOutcome = { ok: true; result: Detection } | { ok: false; message: string };
+
+export const performScan = async (cwd = process.cwd()): Promise<ScanOutcome> => {
   const detection = await detectProject(cwd);
 
   if (!detection) {
-    logger.error("Could not read package.json. Please run inside a React or Next.js project.");
-    return;
+    return {
+      ok: false,
+      message: "Could not read package.json. Please run inside a React or Next.js project.",
+    };
   }
 
   if (!detection.hasReact && !detection.hasNext) {
-    logger.warn(
-      "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry."
-    );
-    return;
+    return {
+      ok: false,
+      message:
+        "This directory does not look like a React or Next.js project. Add react/next to dependencies and retry.",
+    };
   }
 
-  printScanResult(detection);
+  return { ok: true, result: detection };
+};
+
+export const runScan = async (cwd = process.cwd()): Promise<ScanOutcome> => {
+  const outcome = await performScan(cwd);
+  if (outcome.ok) {
+    printScanResult(outcome.result);
+  } else {
+    if ("message" in outcome) {
+      logger.error(outcome.message);
+    } else {
+      logger.error("Unknown error occurred.");
+    }
+  }
+  return outcome;
 };
 
 export const registerScanCommand = (program: Command): void => {

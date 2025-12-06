@@ -13,19 +13,19 @@ const normalizeVersion = (range: string | undefined): string | null => {
   return match[0];
 };
 
-export const runDepsCheck = async (cwd = process.cwd()): Promise<void> => {
+export type DepsOutcome = { ok: true; issues: string[] } | { ok: false; message: string };
+
+export const performDepsCheck = async (cwd = process.cwd()): Promise<DepsOutcome> => {
   const pkg = await readPackageJson(cwd);
 
   if (!pkg) {
-    logger.error("package.json not found. Are you in a React or Next.js project?");
-    return;
+    return { ok: false, message: "package.json not found. Are you in a React or Next.js project?" };
   }
 
   const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
 
   if (Object.keys(allDeps).length === 0) {
-    logger.warn("No dependencies found in package.json.");
-    return;
+    return { ok: true, issues: ["No dependencies found in package.json."] };
   }
 
   const reactVersion = normalizeVersion(allDeps["react"]);
@@ -53,18 +53,39 @@ export const runDepsCheck = async (cwd = process.cwd()): Promise<void> => {
     }
   }
 
-  if (issues.length === 0) {
-    logger.success("No known risky dependency combinations detected.");
-    return;
+  return { ok: true, issues };
+};
+
+export const runDepsCheck = async (cwd = process.cwd()): Promise<DepsOutcome> => {
+  const outcome = await performDepsCheck(cwd);
+
+  if (!outcome.ok) {
+    if ("message" in outcome) {
+      logger.error(outcome.message);
+    } else {
+      logger.error("Unknown error occurred.");
+    }
+    return outcome;
   }
 
-  logger.heading("Dependency warnings:");
-  issues.forEach((issue) => logger.warn(`- ${issue}`));
+  if (outcome.issues.length === 0) {
+    logger.success("No known risky dependency combinations detected.");
+  } else {
+    logger.heading("Dependency warnings:");
+    outcome.issues.forEach((issue) => logger.warn(`- ${issue}`));
+  }
+
+  return outcome;
 };
 
 export const registerDepsCommand = (program: Command): void => {
   program
     .command("deps")
     .description("Inspect dependencies for known risky versions.")
-    .action(async () => runDepsCheck(path.resolve(process.cwd())));
+    .action(async () => {
+      const outcome = await runDepsCheck(path.resolve(process.cwd()));
+      if (!outcome.ok) {
+        process.exitCode = 1;
+      }
+    });
 };

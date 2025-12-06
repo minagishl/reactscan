@@ -5,6 +5,8 @@ import { registerScanCommand } from "./commands/scan.js";
 import { registerCheckCommand } from "./commands/check.js";
 import { registerDepsCommand } from "./commands/deps.js";
 import { registerRscCommand } from "./commands/rsc.js";
+import { registerReportCommand } from "./commands/report.js";
+import { registerInitCommand } from "./commands/init.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version?: string; name?: string };
@@ -20,6 +22,8 @@ registerScanCommand(program);
 registerCheckCommand(program);
 registerDepsCommand(program);
 registerRscCommand(program);
+registerReportCommand(program);
+registerInitCommand(program);
 
 program
   .command("version")
