@@ -19,7 +19,8 @@
     "format": "prettier --check \"src/**/*.{ts,tsx,js,json}\"",
     "format:write": "prettier --write \"src/**/*.{ts,tsx,js,json}\"",
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "chalk": "^5.3.0",
