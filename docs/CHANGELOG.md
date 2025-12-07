@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Build output now minified via esbuild (see scripts/build.mjs).
+
 ## [1.2.2] - 2025-12-07
 
 ### Added
